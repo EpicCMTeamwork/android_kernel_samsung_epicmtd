@@ -1,0 +1,220 @@
+--- Kernel/drivers/video/samsung/s3cfb_mdnie.c
++++ Kernel/drivers/video/samsung/s3cfb_mdnie.c
+@@ -1129,189 +1103,55 @@
+ 	mDNIe_Tuning_Mode = TRUE;
+ }
+ EXPORT_SYMBOL(mDNIe_txtbuf_to_parsing);
+-
+-#if defined(CONFIG_ARIES_LATONA)
+-int mDNIe_txtbuf_to_parsing2(void)
+-{
+-	struct file *filp;
+-	char	*dp;
+-	long	l, i ;
+-	loff_t  pos;
+-	int     ret, num,type;
+-	mm_segment_t fs;
+-
+-	printk("cmc623_load_data start!\n");
+-
+-	fs = get_fs();
+-	set_fs(get_ds());
+-
+-	filp = filp_open("sdcard/external_sd/s3cfb_mdnie_value.h", O_RDONLY, 0);
+-	type = 2;
+-	
+-	if(IS_ERR(filp))
+-	{
+-		filp = filp_open("sdcard/external_sd/mdnie_tune", O_RDONLY, 0);
+-		type = 1;
+-
+-		if(IS_ERR(filp)) 
+-		{
+-			printk("file open error:%d\n", (s32)filp);
+-
+-			return -1;
+-		}
+-	}
+-
+-	l = filp->f_path.dentry->d_inode->i_size;
+-	printk("Size of the file : %ld(bytes)\n", l);
+-
+-	//dp = kmalloc(l, GFP_KERNEL);
+-	dp = kmalloc(l+10, GFP_KERNEL);		// add cushion
+-	if(dp == NULL) 
+-    {
+-		printk("Out of Memory!\n");
+-		filp_close(filp, current->files);
+-		return -1;
+-	}
+-	pos = 0;
+-	memset(dp, 0, l);
+-    printk("== Before vfs_read ======\n");
+-	ret = vfs_read(filp, (char __user *)dp, l, &pos);   // P1_LSJ : DE08 : ?\AC기??죽음 
+-    printk("== After vfs_read ======\n");
+-
+-	if(ret != l) 
+-    {
+-		printk("<CMC623> Failed to read file (ret = %d)\n", ret);
+-		kfree(dp);
+-		filp_close(filp, current->files);
+-		return -1;
+-	}
+-
+-	filp_close(filp, current->files);
+-
+-	set_fs(fs);
+-/*
+-	for(i=0; i<l; i++)
+-    {   
+-		printk("%x ", dp[i]);
+-    }
+-	printk("\n");
+-//*/	
+-	if(type == 1)
+-	{
+-		num = parse_text(dp, l);
+-
+-		if(!num) 
+-		{
+-			printk("Nothing to parse!\n");
+-			kfree(dp);
+-			return -1;
+-		}
+-			
+-		printk("------ Jun Total number of parsed lines: %d\n", num);
+-
+-		mDNIe_data[num] = END_SEQ;
+-
+-		printk("read ok\n");
+-		mDNIe_tuning_set();
+-		printk("tuning set ok\n");
+-
+-		mDNIe_Tuning_Mode = TRUE;
+-	}
+-	else if(type == 2)
+-	{
+-		num = parse_text2(dp, l);
+-		printk("read ok\n");
+-		mDNIe_Set_Mode(current_mDNIe_UI,current_mDNIe_OutDoor_OnOff);
+-		num *= 2;
+-		printk("tuning set ok\n");
+-
+-		mDNIe_Tuning_Mode = FALSE;
+-	}
+-
+-	kfree(dp);
+-	
+-	return num / 2;
+-}
+-EXPORT_SYMBOL(mDNIe_txtbuf_to_parsing2);
+-#endif
+-
+ #endif
+ 
+-#ifdef CONFIG_FB_S3C_MDNIE_TUNINGMODE_FOR_BACKLIGHT
++#ifdef MDNIE_TUNINGMODE_FOR_BACKLIGHT
+ int mdnie_tuning_backlight = 0;
+ 
+-extern int IsLDIEnabled(void);
+ void mDNIe_Mode_set_for_backlight(u16 *buf)
+ {
+ 	u32 i = 0;
+ 	int cnt = 0;
+ 
+-	if(IsLDIEnabled())
+-	{
+-		mutex_lock(&mdnie_use);
++	if(mdnie_tuning_backlight){
++		s3c_mdnie_mask();
+ 
+-		//if(mdnie_tuning_backlight)
++		while ((*(buf+i)) != END_SEQ)
+ 		{
+-			s3c_mdnie_mask();
+-
+-			while ((*(buf+i)) != END_SEQ)
++			if((*(buf+i)) == 0x0100)
+ 			{
+-				if((*(buf+i)) == 0x0100)
+-				{
+-					if(pre_0x0100 < (*(buf+(i+1)))){
+-						while ((pre_0x0100 < (*(buf+(i+1))))&&(pre_0x0100 <= 0x4020)&&(pre_0x0100 >= 0x0000))
+-						{
+-							s3c_mdnie_writel(pre_0x0100, (*(buf+i)));
+-							gprintk("[mDNIe] mDNIe_tuning_initialize: addr(0x%x), data(0x%x)  \n",(*(buf+i)),pre_0x0100);
+-
+-							if((pre_0x0100 & 0x00ff) == 0x20)
+-							{
+-								pre_0x0100 = ((pre_0x0100 & 0xff00) + (0x8<<8)) | (0x20);
+-							}
+-							else
+-							{
+-								pre_0x0100 = ((pre_0x0100 & 0xff00) + (0x8<<8)) | ((pre_0x0100 & 0x00ff) + (0x4));
+-							}
+-							msleep(20);
+-						}
+-					}
+-					else if(pre_0x0100 > (*(buf+(i+1)))){
+-						while (pre_0x0100 > (*(buf+(i+1)))&&(pre_0x0100 >= 0x0000)&&(pre_0x0100 <= 0x4020))
+-						{
+-							s3c_mdnie_writel(pre_0x0100, (*(buf+i)));
+-							gprintk("[mDNIe] mDNIe_tuning_initialize: addr(0x%x), data(0x%x)  \n",(*(buf+i)),pre_0x0100);
+-							
+-							if((pre_0x0100 & 0x00ff) == 0x00)
+-							{
+-								pre_0x0100 = ((pre_0x0100 & 0xff00) - (0x8<<8)) | (0x00);
+-							}
+-							else
+-							{
+-								pre_0x0100 = ((pre_0x0100 & 0xff00) - (0x8<<8)) | ((pre_0x0100 & 0x00ff) - (0x4));
+-							}
+-							msleep(20);
+-						}
++				if(pre_0x0100 < (*(buf+(i+1)))){
++					while ((pre_0x0100 < (*(buf+(i+1))))&&(pre_0x0100 <= 0x6060)&&(pre_0x0100 >= 0x0000))
++					{
++						s3c_mdnie_writel(pre_0x0100, (*(buf+i)));
++						printk("[mDNIe] mDNIe_tuning_initialize: addr(0x%x), data(0x%x)  \n",(*(buf+i)),pre_0x0100);
++						pre_0x0100 = ((pre_0x0100 & 0xff00) + (0x1<<8)) | ((pre_0x0100 & 0x00ff) + (0x1));
+ 					}
+-					s3c_mdnie_writel((*(buf+i+1)), (*(buf+i)));
+-					pre_0x0100 = (*(buf+i+1));
+ 				}
+-				else
+-				{
+-					s3c_mdnie_writel((*(buf+i+1)), (*(buf+i)));
++				else if(pre_0x0100 > (*(buf+(i+1)))){
++					while (pre_0x0100 > (*(buf+(i+1)))&&(pre_0x0100 >= 0x0000)&&(pre_0x0100 <= 0x6060))
++					{
++						s3c_mdnie_writel(pre_0x0100, (*(buf+i)));
++						printk("[mDNIe] mDNIe_tuning_initialize: addr(0x%x), data(0x%x)  \n",(*(buf+i)),pre_0x0100);
++						pre_0x0100 = ((pre_0x0100 & 0xff00) - (0x1<<8)) | ((pre_0x0100 & 0x00ff) - (0x1));
++					}
+ 				}
+-				gprintk("[mDNIe] mDNIe_Mode_set_for_backlight : addr(0x%x), data(0x%x)  \n",(*(buf+i)),(*(buf+(i+1))));	
+-				i+=2;
++				s3c_mdnie_writel((*(buf+i+1)), (*(buf+i)));
++				pre_0x0100 = (*(buf+i+1));
+ 			}
+-
+-			s3c_mdnie_unmask();
++			else
++			{
++				s3c_mdnie_writel((*(buf+i+1)), (*(buf+i)));
++			}
++			printk("[mDNIe] mDNIe_Mode_set_for_backlight : addr(0x%x), data(0x%x)  \n",(*(buf+i)),(*(buf+(i+1))));	
++			i+=2;
+ 		}
+ 
+-		mutex_unlock(&mdnie_use);
+-	}	
++		s3c_mdnie_unmask();
++	}
+ }
+ EXPORT_SYMBOL(mDNIe_Mode_set_for_backlight);
+ 
+-#if 0
+ void mDNIe_txtbuf_to_parsing_for_backlight(void)
+ {
+ 	int i = 0;
