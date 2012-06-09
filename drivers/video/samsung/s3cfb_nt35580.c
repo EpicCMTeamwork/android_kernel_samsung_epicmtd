@@ -28,17 +28,21 @@
 #include <plat/regs-fb.h>
 #include <linux/earlysuspend.h>
 
-#define NT35580_POWERON_DELAY	150
+#define SLEEPMSEC		0x1000
+#define ENDDEF			0x2000
+#define DEFMASK		0xFF00
 
-struct s5p_lcd {
+#define PWM_REG_OFFSET		1
+
+struct s5p_lcd{
 	int ldi_enable;
 	int bl;
-	struct mutex lock;
+	struct mutex	lock;
 	struct device *dev;
 	struct spi_device *g_spi;
-	struct s5p_tft_panel_data *data;
+	struct s5p_panel_data_tft	*data;
 	struct backlight_device *bl_dev;
-	struct early_suspend early_suspend;
+	struct early_suspend    early_suspend;
 };
 
 static int nt35580_spi_write_driver(struct s5p_lcd *lcd, u16 reg)
@@ -60,7 +64,7 @@ static int nt35580_spi_write_driver(struct s5p_lcd *lcd, u16 reg)
 	ret = spi_sync(lcd->g_spi, &msg);
 
 	if (ret < 0)
-		pr_err("%s: error: spi_sync (%d)", __func__, ret);
+		pr_err("%s error\n", __func__);
 
 	return ret;
 }
@@ -82,20 +86,20 @@ static void nt35580_panel_send_sequence(struct s5p_lcd *lcd,
 
 static void update_brightness(struct s5p_lcd *lcd, int level)
 {
-	struct s5p_tft_panel_data *pdata = lcd->data;
+	struct s5p_panel_data_tft *pdata = lcd->data;
 
-	pdata->brightness_set[pdata->pwm_reg_offset] = 0x100 | (level & 0xff);
+	pdata->brightness_set[PWM_REG_OFFSET] = 0x100 | (level & 0xff);
 
 	nt35580_panel_send_sequence(lcd, pdata->brightness_set);
 }
 
 static void nt35580_ldi_enable(struct s5p_lcd *lcd)
 {
-	struct s5p_tft_panel_data *pdata = lcd->data;
+	struct s5p_panel_data_tft *pdata = lcd->data;
 
 	mutex_lock(&lcd->lock);
 
-	msleep(NT35580_POWERON_DELAY);
+	msleep(150);
 
 	nt35580_panel_send_sequence(lcd, pdata->seq_set);
 	update_brightness(lcd, lcd->bl);
@@ -108,7 +112,7 @@ static void nt35580_ldi_enable(struct s5p_lcd *lcd)
 
 static void nt35580_ldi_disable(struct s5p_lcd *lcd)
 {
-	struct s5p_tft_panel_data *pdata = lcd->data;
+	struct s5p_panel_data_tft *pdata = lcd->data;
 
 	mutex_lock(&lcd->lock);
 
@@ -155,7 +159,7 @@ void nt35580_early_suspend(struct early_suspend *h)
 
 	nt35580_ldi_disable(lcd);
 
-	return;
+	return ;
 }
 void nt35580_late_resume(struct early_suspend *h)
 {
@@ -164,7 +168,7 @@ void nt35580_late_resume(struct early_suspend *h)
 
 	nt35580_ldi_enable(lcd);
 
-	return;
+	return ;
 }
 static int __devinit nt35580_probe(struct spi_device *spi)
 {
@@ -195,11 +199,11 @@ static int __devinit nt35580_probe(struct spi_device *spi)
 		ret = -EINVAL;
 		goto err_setup;
 	}
-	lcd->data = (struct s5p_tft_panel_data *)spi->dev.platform_data;
+	lcd->data = (struct s5p_panel_data_tft *)spi->dev.platform_data;
 
 	if (!lcd->data->seq_set || !lcd->data->display_on ||
 		!lcd->data->display_off || !lcd->data->sleep_in ||
-		!lcd->data->brightness_set || !lcd->data->pwm_reg_offset) {
+		!lcd->data->brightness_set) {
 		dev_err(lcd->dev, "Invalid platform data\n");
 		ret = -EINVAL;
 		goto err_setup;
@@ -216,7 +220,7 @@ static int __devinit nt35580_probe(struct spi_device *spi)
 	lcd->bl_dev->props.max_brightness = 255;
 	spi_set_drvdata(spi, lcd);
 
-	lcd->ldi_enable = 1;
+	nt35580_ldi_enable(lcd);
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	lcd->early_suspend.suspend = nt35580_early_suspend;
 	lcd->early_suspend.resume = nt35580_late_resume;

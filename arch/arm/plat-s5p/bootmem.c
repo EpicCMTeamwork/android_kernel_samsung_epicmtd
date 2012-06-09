@@ -98,6 +98,10 @@ void s5p_reserve_bootmem(struct s5p_media_device *mdevs,
 	u64 start, end;
 	int i, ret;
 
+#ifdef CONFIG_S5PV210_BIGMEM
+	dma_addr_t mfc_paddr;
+#endif
+
 	media_devs = mdevs;
 	nr_media_devs = nr_mdevs;
 
